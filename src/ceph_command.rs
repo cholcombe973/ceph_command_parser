@@ -117,7 +117,7 @@ impl Signature {
         let no_slashes_input = input.replace("\\", "")
                                     .replace("\"", "")
                                     .replace("\n", "")
-                                    .replace("\t", "");
+                                    .replace("    ", "");
 
         //println!("Signature input: {:?}", no_slashes_input);
         let parts: Vec<&str> = no_slashes_input.split_whitespace()
@@ -1082,7 +1082,7 @@ impl Command {
 
     pub fn to_string(&self) -> String {
         let mut output = String::new();
-        output.push_str("\tdef ");
+        output.push_str("    def ");
         output.push_str(&self.signature.prefix.replace(" ", "_").replace("-", "_"));
         output.push_str("(self");
 
@@ -1109,51 +1109,54 @@ impl Command {
         output.push_str("):\n");
 
         //Help strings
-        output.push_str("\t\t\"\"\"\n");
-        output.push_str("\t\t");
+        output.push_str("        \"\"\"\n");
+        output.push_str("        ");
         output.push_str(&self.helpstring);
         output.push_str("\n");
         for key in self.signature.parameters.keys(){
-            output.push_str("\t\t:param ");
+            output.push_str("        :param ");
             output.push_str(key);
             output.push_str("\n");
         }
-        output.push_str("\n\t\t:return: (int ret, string outbuf, string outs)");
-        output.push_str("\n\t\t\"\"\"\n");
+        output.push_str("\n        :return: (int ret, string outbuf, string outs)");
+        output.push_str("\n        \"\"\"\n");
         //Help strings
 
         //Validate the parameters
         for (key, ceph_type) in self.signature.parameters.iter(){
             let validate_string = ceph_type.validate_string(&key);
-            output.push_str("\t\t");
+            output.push_str("        ");
             output.push_str(&validate_string);
             output.push_str("\n");
         }
 
         //Create the cmd dictionary
-        output.push_str("\t\tcmd={");
-        output.push_str("\n\t\t\t'prefix':");
+        output.push_str("        cmd={");
+        output.push_str("\n            'prefix':");
         output.push_str("'");
         output.push_str(&self.signature.prefix);
         output.push_str("',");
         for key in self.signature.parameters.keys(){
             output.push_str("\n");
-            output.push_str("\t\t\t'");
+            output.push_str("            '");
             output.push_str(key);
             output.push_str("':");
             output.push_str(key);
             output.push_str(",");
         }
-        output.push_str("\n\t\t}");
+        output.push_str("\n        }");
 
         //Connect to rados and run the command
-        output.push_str("\n\t\tcluster = rados.Rados(conffile='/etc/ceph/ceph.conf')");
-        output.push_str("\n\t\ttry:");
-        output.push_str("\n\t\t\tresult = cluster.mon_command(json.dumps(cmd), inbuf='')");
-        output.push_str("\n\t\t\tcluster.shutdown()");
-        output.push_str("\n\t\t\treturn result");
-        output.push_str("\n\t\texcept Error as e:");
-        output.push_str("\n\t\t\traise e");
+        output.push_str("\n        cluster = rados.Rados(conffile='/etc/ceph/ceph.conf')");
+        output.push_str("\n        try:");
+        output.push_str("\n            cluster.connect()");
+        output.push_str("\n            result = cluster.mon_command(json.dumps(cmd), inbuf='')");
+        output.push_str("\n            cluster.shutdown()");
+        output.push_str("\n            if result[0] is not 0:");
+        output.push_str("\n                raise CephError(cmd=cmd, msg=os.strerror(abs(result[0])))");
+        output.push_str("\n            return result");
+        output.push_str("\n        except rados.Error as e:");
+        output.push_str("\n            raise e");
 
         output
     }
