@@ -7,7 +7,24 @@ use std::io::{self, Read};
 
 mod ceph_command;
 
-use ceph_command::Command;
+fn print_run_command(){
+    println!("def run_ceph_command(conffile, cmd, inbuf):");
+    println!("    \"\"\"Run a ceph command and return the results");
+    println!("    :param conffile: The ceph.conf configuration location");
+    println!("    :param cmd: The json command to run");
+    println!("    :param inbuf:");
+    println!("    :return: :raise e:");
+    println!("    \"\"\"");
+    println!("    cluster = rados.Rados(conffile=conffile)");
+    println!("    try:");
+    println!("        cluster.connect()");
+    println!("        result = cluster.mon_command(json.dumps(cmd), inbuf=inbuf)");
+    println!("        if result[0] is not 0:");
+    println!("            raise CephError(cmd=cmd, msg=os.strerror(abs(result[0])))");
+    println!("        return result[1], result[2]");
+    println!("    except rados.Error as e:");
+    println!("        raise e");
+}
 
 fn print_exception_class(){
     println!("class CephError(Exception):");
@@ -23,10 +40,21 @@ fn print_exception_class(){
 }
 
 fn print_init(){
-    println!("    def __init__(self):");
-    println!("        pass");
+    println!("    def __init__(self, rados_config_file):");
+    println!("        self.rados_config_file = rados_config_file");
+    println!("");
 }
 
+fn print_imports(){
+    println!("import ceph");
+    println!("import json");
+    println!("import os");
+    println!("import os.path");
+    println!("import rados");
+    println!("import six");
+    println!("import stat");
+    println!("");
+}
 fn main(){
     //Read in the MonCommands.h file and produce ceph-commands.py file
     simple_logger::init_with_level(log::LogLevel::Warn).unwrap();
@@ -46,7 +74,10 @@ fn main(){
             // Group commands by module name
 
             //TODO: Optimize me for less brute force crap
+            print_imports();
             print_exception_class();
+            print_run_command();
+
             let pg_commands:Vec<&ceph_command::Command> = cmds.iter().filter(|c| c.module_name == ceph_command::Module::Pg).collect();
             if pg_commands.len() > 0{
                 println!("class {}:", ceph_command::Module::Pg.to_string());

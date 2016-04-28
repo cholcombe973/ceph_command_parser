@@ -3,7 +3,6 @@ extern crate nom;
 use nom::{is_digit, is_alphabetic, is_alphanumeric, eof, multispace, not_line_ending, rest, space};
 
 use std::collections::HashMap;
-use std::io::{Read};
 use std::str::{from_utf8, FromStr};
 
 #[test]
@@ -170,71 +169,12 @@ impl AllowedRepeats{
 }
 
 #[derive(Clone, Debug)]
-pub enum CephType {
-    CephInt {
-        req: bool,
-        min: Option<u32>,
-        max: Option<u32>,
-    }, // Optional: range=min[|max]
-    CephFloat {
-        req: bool,
-        min: Option<f32>,
-        max: Option<f32>,
-    }, // Optional range
-    CephString {
-        req: bool,
-        goodchars: Option<String>,
-        allowed_repeats: AllowedRepeats,
-    }, // optional badchars
-    CephSocketpath {
-        req: bool,
-    }, // validation involves "is it S_ISSOCK"
-    CephIPAddr {
-        req: bool,
-    }, // v4 or v6 addr with optional port, syntax validated
-    CephEntityAddr {
-        req: bool,
-    }, // CephIPAddr + optional '/nonce'
-    CephPoolname {
-        req: bool,
-    }, // Plainold string
-    CephObjectname {
-        req: bool,
-    }, // Another plainold string
-    CephPgid {
-        req: bool,
-    }, // n.xxx where n is an int > 0, xxx is a hex number > 0
-    CephName {
-        req: bool,
-    }, // daemon name, '*' or '<type>.<id>' (id must be int for type osd)
-    CephOsdName {
-        req: bool,
-    }, // osd name, '*' or '<id> or 'osd.<id>' (id must be int)
-    CephChoices {
-        req: bool,
-        choices: Vec<String>, /* Note that
-                               * 	- string literals are accumulated into 'prefix'
-                               * 	- n=1 descriptors are given normal string or int object values
-                               * 	- n=N descriptors are given array values
-                               * */
-        allowed_repeats: AllowedRepeats,
-    }, // strings="foo|bar" means this param can be either
-    CephFilepath {
-        req: bool,
-    }, // openable file
-    CephFragment {
-        req: bool,
-    }, // cephfs 'fragID': val/bits, val in hex 0xnnn, bits in dec
-    CephUUID {
-        req: bool,
-    }, // uuid in text matching Python uuid.UUID()
-    CephPrefix {
-        req: bool,
-    }, // special type assigned to literals
-    Unknown,
+pub struct CephType{
+    pub req: bool,
+    pub variant: CephEnum,
 }
 
-impl CephType {
+impl CephType{
     fn parse<'a>(input: &'a [u8], ceph_type: String) -> nom::IResult<&'a [u8], Self> {
         match &ceph_type[..] {
             "CephInt" => {
@@ -244,10 +184,12 @@ impl CephType {
                     range_max: dbg!(call!(u32_max_range)) ~
                     req: dbg!(call!(req)),
                     ||{
-                        CephType::CephInt{
+                        CephType{
                             req: req,
-                            min: range_min,
-                            max: range_max,
+                            variant: CephEnum::CephInt{
+                                min: range_min,
+                                max: range_max,
+                            }
                         }
                     }
                 )
@@ -259,21 +201,28 @@ impl CephType {
                     max_range: dbg!(call!(f32_max_range)) ~
                     req: dbg!(call!(req)) ,
                     ||{
-                        CephType::CephFloat{
+                        CephType{
                             req: req,
-                            min: min_range,
-                            max: max_range,
+                            variant: CephEnum::CephFloat{
+                                min: min_range,
+                                max: max_range,
+                            }
                         }
                     }
                 )
             }
             "CephString" => {
                 if input.len() == 0{
-                    nom::IResult::Done(input, CephType::CephString{
-                        req: true,
-                        goodchars: None,
-                        allowed_repeats: AllowedRepeats::One,
-                    })
+                    nom::IResult::Done(input,
+
+                        CephType{
+                            req: true,
+                            variant: CephEnum::CephString{
+                                goodchars: None,
+                                allowed_repeats: AllowedRepeats::One
+                            }
+                        }
+                    )
                 }else{
                     chain!(
                         input,
@@ -281,10 +230,12 @@ impl CephType {
                         goodchars: call!(good_chars) ~
                         req: call!(req),
                         ||{
-                            CephType::CephString{
+                            CephType{
                                 req: req,
-                                goodchars: goodchars,
-                                allowed_repeats: repeats,
+                                variant: CephEnum::CephString{
+                                    goodchars: goodchars,
+                                    allowed_repeats: repeats,
+                                }
                             }
                         }
                     )
@@ -295,8 +246,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephSocketpath{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephSocketpath
                         }
                     }
                 )
@@ -306,8 +258,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephIPAddr{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephIPAddr
                         }
                     }
                 )
@@ -317,8 +270,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephEntityAddr{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephEntityAddr
                         }
                     }
                 )
@@ -328,8 +282,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephPoolname{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephPoolname
                         }
                     }
                 )
@@ -339,8 +294,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephObjectname{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephObjectname
                         }
                     }
                 )
@@ -350,8 +306,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephPgid{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephPgid
                         }
                     }
                 )
@@ -361,8 +318,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephName{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephName
                         }
                     }
                 )
@@ -372,8 +330,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephOsdName{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephOsdName
                         }
                     }
                 )
@@ -385,10 +344,12 @@ impl CephType {
                     repeats: call!(one_or_more) ~
                     req: call!(req) ,
                     ||{
-                        CephType::CephChoices{
+                        CephType{
                             req: req,
-                            choices: choices.clone(),
-                            allowed_repeats: repeats,
+                            variant: CephEnum::CephChoices{
+                                choices: choices.clone(),
+                                allowed_repeats: repeats,
+                            }
                         }
                     }
                 )
@@ -398,8 +359,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephFilepath{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephFilepath
                         }
                     }
                 )
@@ -409,8 +371,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephFragment{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephFragment
                         }
                     }
                 )
@@ -420,8 +383,9 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephUUID{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephUUID
                         }
                     }
                 )
@@ -431,103 +395,136 @@ impl CephType {
                     input,
                     req: call!(req) ,
                     ||{
-                        CephType::CephPrefix{
+                        CephType{
                             req: req,
+                            variant: CephEnum::CephPrefix
                         }
                     }
                 )
             }
             _ => {
-                nom::IResult::Done(input, CephType::Unknown)
+                nom::IResult::Done(input, CephType{req: false, variant: CephEnum::Unknown})
             }
         }
     }
+}
 
+#[derive(Clone, Debug)]
+pub enum CephEnum {
+    CephInt {
+        min: Option<u32>,
+        max: Option<u32>,
+    }, // Optional: range=min[|max]
+    CephFloat {
+        min: Option<f32>,
+        max: Option<f32>,
+    }, // Optional range
+    CephString {
+        goodchars: Option<String>,
+        allowed_repeats: AllowedRepeats,
+    }, // optional badchars
+    CephSocketpath, // validation involves "is it S_ISSOCK"
+    CephIPAddr, // v4 or v6 addr with optional port, syntax validated
+    CephEntityAddr, // CephIPAddr + optional '/nonce'
+    CephPoolname, // Plainold string
+    CephObjectname, // Another plainold string
+    CephPgid, // n.xxx where n is an int > 0, xxx is a hex number > 0
+    CephName, // daemon name, '*' or '<type>.<id>' (id must be int for type osd)
+    CephOsdName, // osd name, '*' or '<id> or 'osd.<id>' (id must be int)
+    CephChoices {
+        choices: Vec<String>, /* Note that
+                               * 	- string literals are accumulated into 'prefix'
+                               * 	- n=1 descriptors are given normal string or int object values
+                               * 	- n=N descriptors are given array values
+                               * */
+        allowed_repeats: AllowedRepeats,
+    }, // strings="foo|bar" means this param can be either
+    CephFilepath, // openable file
+    CephFragment, // cephfs 'fragID': val/bits, val in hex 0xnnn, bits in dec
+    CephUUID, // uuid in text matching Python uuid.UUID()
+    CephPrefix, // special type assigned to literals
+    Unknown,
+}
+
+impl CephEnum {
     fn validate_string(&self, param_name: &String) -> String{
         match self{
-            &CephType::CephInt{req, min, max}  => {
+            &CephEnum::CephInt{min, max}  => {
                 let mut validate = String::new();
-                validate.push_str("assert isinstance(");
-                validate.push_str(param_name);
-                validate.push_str(",");
-                validate.push_str(" int");
-                validate.push_str(")");
+                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!(", str({}) + \" is not a int\"", param_name));
 
                 validate
             },
-            &CephType::CephFloat{req, min, max} => {
+            &CephEnum::CephFloat{min, max} => {
                 let mut validate = String::new();
-                validate.push_str("assert isinstance(");
-                validate.push_str(param_name);
-                validate.push_str(",");
-                validate.push_str(" float");
-                validate.push_str(")");
+                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!(", str({}) + \" is not a float\"", param_name));
 
                 validate
             },
-            &CephType::CephString{req, ref goodchars, ref allowed_repeats} => {
+            &CephEnum::CephString{ref goodchars, ref allowed_repeats} => {
                 let mut validate = String::new();
-                validate.push_str("assert isinstance(");
-                validate.push_str(param_name);
-                validate.push_str(",");
-                validate.push_str(" six.string_types");
-                validate.push_str(")");
+                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
 
                 validate
             },
-            &CephType::CephSocketpath{req} => {
+            &CephEnum::CephSocketpath => {
                 let mut validate = String::new();
+                validate.push_str(&format!("assert stat.S_ISSOCK(os.stat({}).st_mode)", param_name));
+                validate.push_str(&format!(", str({}) + \" is not a socket\"", param_name));
 
                 validate
             },
-            &CephType::CephIPAddr{req} => {
+            &CephEnum::CephIPAddr => {
                 let mut validate = String::new();
 
                 validate
             },
-            &CephType::CephEntityAddr{req} => {
+            &CephEnum::CephEntityAddr => {
                 let mut validate = String::new();
 
                 validate
             },
-            &CephType::CephPoolname{req} => {
+            &CephEnum::CephPoolname => {
                 let mut validate = String::new();
-                validate.push_str("assert isinstance(");
-                validate.push_str(param_name);
-                validate.push_str(",");
-                validate.push_str(" six.string_types");
-                validate.push_str(")");
+                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
 
                 validate
             },
-            &CephType::CephObjectname{req} => {
+            &CephEnum::CephObjectname => {
                 let mut validate = String::new();
-                validate.push_str("assert isinstance(");
-                validate.push_str(param_name);
-                validate.push_str(",");
-                validate.push_str(" six.string_types");
-                validate.push_str(")");
+                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
 
                 validate
             },
-            &CephType::CephPgid{req} => {
+            &CephEnum::CephPgid => {
                 let mut validate = String::new();
+                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
 
                 validate
             },
-            &CephType::CephName{req} => {
+            &CephEnum::CephName => {
                 let mut validate = String::new();
+                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
 
                 validate
             },
-            &CephType::CephOsdName{req} => {
+            &CephEnum::CephOsdName => {
                 let mut validate = String::new();
+                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
 
                 validate
             },
-            &CephType::CephChoices{req, ref choices, ref allowed_repeats} => {
+            &CephEnum::CephChoices{ref choices, ref allowed_repeats} => {
                 let mut validate = String::new();
-                validate.push_str("validator(value=");
+                validate.push_str("ceph.validator(value=");
                 validate.push_str(param_name);
                 validate.push_str(",");
                 validate.push_str(" valid_type=list,");
@@ -537,35 +534,39 @@ impl CephType {
                 validate.push_str(&quoted_choices.join(","));
                 validate.push_str("]");
                 validate.push_str(")");
+                validate.push_str(&format!(", str({}) + \" is not a list\"", param_name));
 
                 validate
             },
-            &CephType::CephFilepath{req} => {
+            &CephEnum::CephFilepath => {
+                let mut validate = String::new();
+                validate.push_str(&format!("assert os.path.exists({}), ", param_name));
+                validate.push_str(&format!(", str({}) + \" does not exist on the filesystem\"", param_name));
+
+                validate
+            },
+            &CephEnum::CephFragment => {
                 let mut validate = String::new();
 
                 validate
             },
-            &CephType::CephFragment{req} => {
-                let mut validate = String::new();
-
-                validate
-            },
-            &CephType::CephUUID{req} => {
+            &CephEnum::CephUUID => {
                 let mut validate = String::new();
                 validate.push_str("assert isinstance(");
                 validate.push_str(param_name);
                 validate.push_str(",");
                 validate.push_str(" uuid.UUID");
                 validate.push_str(")");
+                validate.push_str(&format!(", str({}) + \" is not a UUID\"", param_name));
 
                 validate
             },
-            &CephType::CephPrefix{req} => {
+            &CephEnum::CephPrefix => {
                 let mut validate = String::new();
 
                 validate
             },
-            &CephType::Unknown => {
+            &CephEnum::Unknown => {
                 "".to_string()
             }
         }
@@ -1044,6 +1045,34 @@ named!(comment_block,
            take_until_and_consume!(&b"*/"[..]),
            || { &b""[..] }));
 
+//Generate parameter list from a HashMap with optional parameters at the end
+fn generate_param_list(params: &HashMap<String, CephType>)->String{
+    let mut optional_params: Vec<String> = Vec::new();
+    let mut mandatory_params: Vec<String> = Vec::new();
+    let mut output = String::new();
+
+    for (key, ceph_type) in params{
+        if ceph_type.req{
+            mandatory_params.push(key.clone());
+        }else{
+            //Optional parameter
+            optional_params.push(format!("{}=None", key));
+        }
+    }
+    trace!("mandatory_params: {:?}", mandatory_params);
+    trace!("optional_params: {:?}", optional_params);
+    if mandatory_params.len() >0 {
+        output.push_str(",");
+        output.push_str(&mandatory_params.join(","));
+    }
+    if optional_params.len() > 0{
+        output.push_str(",");
+        output.push_str(&optional_params.join(","));
+    }
+    trace!("generate_param_list output: {:?}", output);
+    output
+}
+
 // COMMAND(signature, helpstring, modulename, req perms, availability)
 #[derive(Debug)]
 pub struct Command {
@@ -1082,30 +1111,11 @@ impl Command {
 
     pub fn to_string(&self) -> String {
         let mut output = String::new();
-        output.push_str("    def ");
-        output.push_str(&self.signature.prefix.replace(" ", "_").replace("-", "_"));
-        output.push_str("(self");
-
+        let prefix_method_name = self.signature.prefix.replace(" ", "_").replace("-", "_");
         let num_of_params = self.signature.parameters.len();
-        let mut counter = 0;
 
-        for key in self.signature.parameters.keys(){
-            if counter == 0{
-                output.push_str(", ");
-            }
-            counter+=1;
-            //NOTE: How can I handle optional parameters?
-            //let ceph_type = self.signature.parameters.get(key).unwrap();
-            //if ceph_type.req{
-                output.push_str(&key);
-            //}else{
-                //output.push_str(&key);
-                //output.push_str("=None");
-            //}
-            if counter < num_of_params{
-                output.push_str(", ");
-            }
-        }
+        output.push_str(&format!("    def {}(self", prefix_method_name));
+        output.push_str(&generate_param_list(&self.signature.parameters));
         output.push_str("):\n");
 
         //Help strings
@@ -1114,49 +1124,53 @@ impl Command {
         output.push_str(&self.helpstring);
         output.push_str("\n");
         for key in self.signature.parameters.keys(){
-            output.push_str("        :param ");
-            output.push_str(key);
-            output.push_str("\n");
+            output.push_str(&format!("        :param {}\n", key));
         }
-        output.push_str("\n        :return: (int ret, string outbuf, string outs)");
+        output.push_str("\n        :return: (string outbuf, string outs)");
+        output.push_str("\n        :raise CephError: Raises CephError on command execution errors");
+        output.push_str("\n        :raise rados.Error: Raises on rados errors");
         output.push_str("\n        \"\"\"\n");
         //Help strings
 
         //Validate the parameters
         for (key, ceph_type) in self.signature.parameters.iter(){
-            let validate_string = ceph_type.validate_string(&key);
-            output.push_str("        ");
-            output.push_str(&validate_string);
-            output.push_str("\n");
+            if ceph_type.req{
+                let validate_string = ceph_type.variant.validate_string(&key);
+                output.push_str(&format!("        {}\n", validate_string));
+            }
         }
 
         //Create the cmd dictionary
-        output.push_str("        cmd={");
-        output.push_str("\n            'prefix':");
-        output.push_str("'");
-        output.push_str(&self.signature.prefix);
-        output.push_str("',");
-        for key in self.signature.parameters.keys(){
-            output.push_str("\n");
-            output.push_str("            '");
-            output.push_str(key);
-            output.push_str("':");
-            output.push_str(key);
-            output.push_str(",");
+        if num_of_params == 0{
+            output.push_str(&format!("        cmd={{'prefix': '{}'}}", self.signature.prefix));
+        }else{
+            output.push_str(&format!("        cmd={{'prefix': '{}'", self.signature.prefix));
         }
-        output.push_str("\n        }");
+
+        //Mandatory parameters
+        for (key, ceph_type) in self.signature.parameters.iter(){
+            if ceph_type.req{
+                output.push_str(&format!(", '{}':{}", key, key));
+            }
+        }
+        if num_of_params > 0{
+            output.push_str("\n        }");
+        }
+
+        //Optional parameters with checks to see if they are used
+        for (key, ceph_type) in self.signature.parameters.iter(){
+            if !ceph_type.req{
+                let validate_string = ceph_type.variant.validate_string(&key);
+                output.push_str("\n");
+                output.push_str(&format!("\n        if {} is not None:", key));
+                output.push_str(&format!("\n            {}", validate_string));
+                output.push_str(&format!("\n            cmd['{}']={}", key, key));
+            }
+        }
 
         //Connect to rados and run the command
-        output.push_str("\n        cluster = rados.Rados(conffile='/etc/ceph/ceph.conf')");
-        output.push_str("\n        try:");
-        output.push_str("\n            cluster.connect()");
-        output.push_str("\n            result = cluster.mon_command(json.dumps(cmd), inbuf='')");
-        output.push_str("\n            cluster.shutdown()");
-        output.push_str("\n            if result[0] is not 0:");
-        output.push_str("\n                raise CephError(cmd=cmd, msg=os.strerror(abs(result[0])))");
-        output.push_str("\n            return result");
-        output.push_str("\n        except rados.Error as e:");
-        output.push_str("\n            raise e");
+        output.push_str("\n        return run_ceph_command(self.rados_config_file, cmd, inbuf='')");
+        output.push_str("\n");
 
         output
     }
