@@ -571,6 +571,28 @@ impl CephEnum {
             }
         }
     }
+
+    fn to_string(&self) -> String{
+        match self{
+            &CephEnum::CephInt{min, max}  => "int".to_string(),
+            &CephEnum::CephFloat{min, max} => "float".to_string(),
+            &CephEnum::CephString{ref goodchars, ref allowed_repeats}  => "six.string_types".to_string(),
+            &CephEnum::CephSocketpath => "socket".to_string(),
+            &CephEnum::CephIPAddr => "v4 or v6 addr with optional port".to_string(),
+            &CephEnum::CephEntityAddr => "CephIPAddr + optional '/nonce'".to_string(),
+            &CephEnum::CephPoolname => "six.string_types".to_string(),
+            &CephEnum::CephObjectname => "six.string_types".to_string(),
+            &CephEnum::CephPgid => "six.string_types".to_string(),
+            &CephEnum::CephName => "six.string_types".to_string(),
+            &CephEnum::CephOsdName => "six.string_types".to_string(),
+            &CephEnum::CephChoices{ref choices, ref allowed_repeats} => "list".to_string(),
+            &CephEnum::CephFilepath => "file path".to_string(),
+            &CephEnum::CephFragment => "six.string_types".to_string(),
+            &CephEnum::CephUUID => "uuid.UUID".to_string(),
+            &CephEnum::CephPrefix => "".to_string(),
+            &CephEnum::Unknown => "unknown".to_string(),
+        }
+    }
 }
 
 #[test]
@@ -624,11 +646,11 @@ fn trailing_chars(input: &[u8]) ->nom::IResult<&[u8], ()>{
         nom::IResult::Done(remaining, _) => {
             //Found a comma, we're done
             return nom::IResult::Done(remaining, ());
-        }
+        },
         nom::IResult::Incomplete(_) => {
             //Ran out of input.  We're done
             return nom::IResult::Done(input, ());
-        }
+        },
         nom::IResult::Error(_) => {
             //Possibly a space?
             let space = tag!(input, " ");
@@ -1073,6 +1095,26 @@ fn generate_param_list(params: &HashMap<String, CephType>)->String{
     output
 }
 
+/// Wraps a string at 80 chars or less by splitting space and then adding the chunks together
+fn wrap_string(s: &String)->String{
+    let mut count: usize = 0;
+    let mut output: Vec<String> = Vec::new();
+    let parts: Vec<&str> = s.split_whitespace().collect();
+
+    for part in parts{
+        count +=  part.chars().count();
+        if count >= 50{
+            output.push("\n       ".to_string());
+            output.push(part.to_string());
+            count = 0;
+        }else{
+            output.push(part.to_string());
+        }
+    }
+    //TODO: This inserts trailing spaces.  I hate pep8
+    output.join(" ")
+}
+
 // COMMAND(signature, helpstring, modulename, req perms, availability)
 #[derive(Debug)]
 pub struct Command {
@@ -1121,10 +1163,10 @@ impl Command {
         //Help strings
         output.push_str("        \"\"\"\n");
         output.push_str("        ");
-        output.push_str(&self.helpstring);
+        output.push_str(&wrap_string(&self.helpstring));
         output.push_str("\n");
-        for key in self.signature.parameters.keys(){
-            output.push_str(&format!("        :param {}\n", key));
+        for (key, ceph_type) in self.signature.parameters.iter(){
+            output.push_str(&format!("        :param {} {}\n", key, ceph_type.variant.to_string()));
         }
         output.push_str("\n        :return: (string outbuf, string outs)");
         output.push_str("\n        :raise CephError: Raises CephError on command execution errors");
