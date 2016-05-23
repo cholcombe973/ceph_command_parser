@@ -10,10 +10,12 @@ mod ceph_command;
 fn print_run_command(){
     println!("def run_ceph_command(conffile, cmd, inbuf):");
     println!("    \"\"\"Run a ceph command and return the results");
+    println!("");
     println!("    :param conffile: The ceph.conf configuration location");
     println!("    :param cmd: The json command to run");
     println!("    :param inbuf:");
-    println!("    :return: :raise e:");
+    println!("    :return: (string outbuf, string outs)");
+    println!("    :raise rados.Error: Raises on rados errors");
     println!("    \"\"\"");
     println!("    cluster = rados.Rados(conffile=conffile)");
     println!("    try:");
@@ -29,9 +31,9 @@ fn print_run_command(){
 fn print_exception_class(){
     println!("class CephError(Exception):");
     println!("    \"\"\"Exception raised for errors with running a Ceph command");
-    println!("    Attributes:");
-    println!("        cmd -- cmd in which the error occurred");
-    println!("        msg  -- explanation of the error");
+    println!("");
+    println!("        :param cmd: cmd in which the error occurred");
+    println!("        :param msg: explanation of the error");
     println!("    \"\"\"");
     println!("    def __init__(self, cmd, msg):");
     println!("        self.cmd = cmd");
