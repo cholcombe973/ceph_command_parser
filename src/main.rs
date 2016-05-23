@@ -46,7 +46,7 @@ fn print_init(){
 }
 
 fn print_imports(){
-    println!("import ceph");
+    println!("from charmhelpers.contrib.storage.linux import ceph");
     println!("import json");
     println!("import os");
     println!("import os.path");
