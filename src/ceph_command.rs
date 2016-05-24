@@ -24,7 +24,7 @@ fn one_command() {
             module_name: Module::Pg,
             permissions: Permissions { read: true, write: false, execute: false },
             availability: Availability::Both,
-            flags: vec![] }
+            flags: None }
         ), result);
 }
 
@@ -58,7 +58,7 @@ fn piped_command() {
             helpstring: "list pg on osd [osd]".to_string(),
             module_name: Module::Pg,
             permissions: Permissions { read: true, write: false, execute: false },
-            availability: Availability::Both, flags: vec![] }
+            availability: Availability::Both, flags: None }
         ), result);
 }
 
@@ -229,6 +229,12 @@ impl AllowedRepeats{
             _ => AllowedRepeats::One,
         }
     }
+    fn to_string(self)->String{
+        match self{
+            AllowedRepeats::Many => "many".to_string(),
+            AllowedRepeats::One => "one".to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -239,6 +245,10 @@ pub struct CephType{
 
 impl CephType{
     fn parse<'a>(input: &'a [u8], ceph_type: String) -> nom::IResult<&'a [u8], Self> {
+        //if ceph_type == "CephPoolname" {
+        //    println!("ceph_type: {}", ceph_type);
+        //    println!("Input to ceph_type: {}", String::from_utf8_lossy(input));
+        //}
         match &ceph_type[..] {
             "CephInt" => {
                 chain!(
@@ -343,11 +353,14 @@ impl CephType{
             "CephPoolname" => {
                 chain!(
                     input,
+                    repeats: dbg!(opt!(call!(allowed))) ~
                     req: call!(req) ,
                     ||{
                         CephType{
                             req: req,
-                            variant: CephEnum::CephPoolname
+                            variant: CephEnum::CephPoolname{
+                                allowed_repeats: repeats,
+                            }
                         }
                     }
                 )
@@ -489,7 +502,9 @@ pub enum CephEnum {
     CephSocketpath, // validation involves "is it S_ISSOCK"
     CephIPAddr, // v4 or v6 addr with optional port, syntax validated
     CephEntityAddr, // CephIPAddr + optional '/nonce'
-    CephPoolname, // Plainold string
+    CephPoolname{
+        allowed_repeats: Option<AllowedRepeats>,
+    }, // Plainold string
     CephObjectname, // Another plainold string
     CephPgid, // n.xxx where n is an int > 0, xxx is a hex number > 0
     CephName, // daemon name, '*' or '<type>.<id>' (id must be int for type osd)
@@ -514,14 +529,14 @@ impl CephEnum {
         match self{
             &CephEnum::CephInt{min, max}  => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!("assert isinstance({}, int)", param_name));
                 validate.push_str(&format!(", str({}) + \" is not a int\"", param_name));
 
                 validate
             },
             &CephEnum::CephFloat{min, max} => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
+                validate.push_str(&format!("assert isinstance({}, float)", param_name));
                 validate.push_str(&format!(", str({}) + \" is not a float\"", param_name));
 
                 validate
@@ -550,7 +565,7 @@ impl CephEnum {
 
                 validate
             },
-            &CephEnum::CephPoolname => {
+            &CephEnum::CephPoolname{ref allowed_repeats} => {
                 let mut validate = String::new();
                 validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
                 validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
@@ -637,18 +652,70 @@ impl CephEnum {
 
     fn to_string(&self) -> String{
         match self{
-            &CephEnum::CephInt{min, max}  => "int".to_string(),
-            &CephEnum::CephFloat{min, max} => "float".to_string(),
-            &CephEnum::CephString{ref goodchars, ref allowed_repeats}  => "six.string_types".to_string(),
+            &CephEnum::CephInt{min, max}  => {
+                let mut out = String::from("int");
+                if min.is_some(){
+                    out.push_str(&format!(" min={}", min.unwrap()))
+                }
+                if max.is_some(){
+                    out.push_str(&format!(" max={}", max.unwrap()));
+                }
+                out
+            },
+            &CephEnum::CephFloat{min, max} => {
+                let mut out = String::from("float");
+                if min.is_some(){
+                    out.push_str(&format!(" min={}", min.unwrap()))
+                }
+                if max.is_some(){
+                    out.push_str(&format!(" max={}", max.unwrap()));
+                }
+                out
+            }
+            &CephEnum::CephString{ref goodchars, ref allowed_repeats}  => {
+                let mut out = String::from("six.string_types");
+
+                if goodchars.is_some(){
+                    let charset = goodchars.clone().unwrap();
+                    out.push_str(" valid_characters=[");
+                    out.push_str(&charset);
+                    out.push_str("]");
+                }
+                out.push_str(" allowed repeats=");
+                out.push_str(&allowed_repeats.clone().to_string());
+
+                out
+            }
             &CephEnum::CephSocketpath => "socket".to_string(),
             &CephEnum::CephIPAddr => "v4 or v6 addr with optional port".to_string(),
             &CephEnum::CephEntityAddr => "CephIPAddr + optional '/nonce'".to_string(),
-            &CephEnum::CephPoolname => "six.string_types".to_string(),
+            &CephEnum::CephPoolname{ref allowed_repeats} => {
+                let mut out = String::from("six.string_types");
+                if allowed_repeats.is_some(){
+                    let repeats = allowed_repeats.clone().unwrap();
+                    out.push_str(" allowed repeats=");
+                    out.push_str(&repeats.to_string());
+                }
+                out
+            }
             &CephEnum::CephObjectname => "six.string_types".to_string(),
             &CephEnum::CephPgid => "six.string_types".to_string(),
             &CephEnum::CephName => "six.string_types".to_string(),
             &CephEnum::CephOsdName => "six.string_types".to_string(),
-            &CephEnum::CephChoices{ref choices, ref allowed_repeats} => "list".to_string(),
+            &CephEnum::CephChoices{ref choices, ref allowed_repeats} => {
+                let mut out = String::from("list");
+
+                out.push_str(" valid_range=[");
+                //choices
+                let quoted_choices:Vec<String> = choices.iter().map(|s| format!("\"{}\"", s)).collect();
+                out.push_str(&quoted_choices.join(","));
+                out.push_str("]");
+
+                out.push_str(" allowed repeats=");
+                out.push_str(&allowed_repeats.clone().to_string());
+                
+                out
+            },
             &CephEnum::CephFilepath => "file path".to_string(),
             &CephEnum::CephFragment => "six.string_types".to_string(),
             &CephEnum::CephUUID => "uuid.UUID".to_string(),
@@ -731,6 +798,14 @@ fn trailing_chars(input: &[u8]) ->nom::IResult<&[u8], ()>{
                 }
             }
         }
+    }
+}
+
+fn allowed(input: &[u8]) -> nom::IResult<&[u8], AllowedRepeats>{
+    if input.len() == 0{
+        return nom::IResult::Done(input, AllowedRepeats::One);
+    }else{
+        return allowed_repeats(input);
     }
 }
 
@@ -920,7 +995,7 @@ named!(choices<&[u8], Vec<String> >,
 named!(quoted_string <&[u8], &str>,
     map_res!(
         chain!(
-            space? ~
+            //space? ~
             take_until!("\"") ~
             tag!("\"") ~
             s: take_until!("\",") ~
@@ -1097,7 +1172,27 @@ named!(module <&[u8], Module>,
 #[test]
 fn check_parse_flags() {
     let x: &[u8] = &[];
-    let input = "FLAG(NOFORWARD)|FLAG(DEPRECATED)";
+    let input = ", FLAG(NOFORWARD)|FLAG(DEPRECATED)";
+    let result = flags(input.as_bytes());
+    println!("Result: {:?}", result);
+    assert_eq!(nom::IResult::Done(x, vec![Flag::NoForward, Flag::Deprecated]), result);
+}
+
+#[test]
+fn check_parse_flags_2() {
+    let x: &[u8] = &[];
+    let input = r#", \
+        FLAG(NOFORWARD)|FLAG(DEPRECATED)"#;
+    let result = flags(input.as_bytes());
+    println!("Result: {:?}", result);
+    assert_eq!(nom::IResult::Done(x, vec![Flag::NoForward, Flag::Deprecated]), result);
+}
+
+#[test]
+fn check_parse_flags_3() {
+    let x: &[u8] = &[];
+    let input = r#",
+        FLAG(NOFORWARD)|FLAG(DEPRECATED)"#;
     let result = flags(input.as_bytes());
     println!("Result: {:?}", result);
     assert_eq!(nom::IResult::Done(x, vec![Flag::NoForward, Flag::Deprecated]), result);
@@ -1105,6 +1200,8 @@ fn check_parse_flags() {
 
 named!(flags<&[u8], Vec<Flag> >,
     chain!(
+        tag!(",") ~
+        blanks ~
         flags: separated_list!(tag!("|"), flag),
         ||{
             flags
@@ -1131,15 +1228,14 @@ fn test_command_with_flag(){
                 module_name: Module::Mon,
                 permissions: Permissions { read: true, write: true, execute: false },
                 availability: Availability::Both,
-                flags: vec![Flag::Deprecated]
+                flags: Some(vec![Flag::Deprecated])
         }), result);
 }
 
 named!(flag <&[u8], Flag>,
     map!(
         chain!(
-            take_until!("FLAG(") ~
-            tag!("FLAG(")~
+            take_until_and_consume!("FLAG(") ~
             flag: dbg_dmp!(map_res!(take_until_and_consume!(")"), from_utf8)),
             ||{
                 flag
@@ -1173,8 +1269,18 @@ named!(permissions <&[u8], Permissions>,
 // Copied from: https://github.com/filipegoncalves/rust-config/blob/master/src/parser.rs
 named!(blanks,
        chain!(
-           many0!(alt!(multispace | comment_one_line | comment_block)),
+           many0!(
+               alt!(
+                   multispace |
+                   comment_one_line |
+                   comment_block |
+                   continue_line
+               )),
            || { &b""[..] }));
+
+named!(continue_line,
+    tag!("\\\n")
+);
 
 // Auxiliary parser to ignore newlines
 // NOTE: In some cases, this parser is combined with others that use `not_line_ending`
@@ -1248,6 +1354,30 @@ fn wrap_string(s: &String)->String{
     output.join(" ")
 }
 
+#[test]
+fn test_mds(){
+    let x: &[u8] = &[];
+    let input = r#"COMMAND("mds set " \
+	"name=var,type=CephChoices,strings=max_mds|max_file_size"
+	"|allow_new_snaps|inline_data|allow_multimds|allow_dirfrags " \
+	"name=val,type=CephString "					\
+	"name=confirm,type=CephString,req=false",			\
+	"set mds parameter <var> to <val>", "mds", "rw", "cli,rest")"#;
+
+    let result = parse_commands(input.as_bytes());
+    println!("test_mds: {:?}", result);
+}
+
+#[test]
+fn test_multi_command(){
+    let x: &[u8] = &[];
+    let input = r#"COMMAND("pg getmap", "get binary pg map to -o/stdout", "pg", "r", "cli,rest")
+COMMAND("pg send_pg_creates", "trigger pg creates to be issued",\
+        "pg", "rw", "cli,rest")"#;
+    let result = parse_commands(input.as_bytes());
+    println!("test_multi_command: {:?}", result);
+}
+
 // COMMAND(signature, helpstring, modulename, req perms, availability)
 #[derive(Debug,PartialEq)]
 pub struct Command {
@@ -1256,7 +1386,7 @@ pub struct Command {
     pub module_name: Module,
     pub permissions: Permissions,
     pub availability: Availability,
-    pub flags: Vec<Flag>,
+    pub flags: Option<Vec<Flag>>,
 }
 
 impl Command {
@@ -1268,23 +1398,18 @@ impl Command {
                 dbg!(
                     alt!(
                         tag!("COMMAND(")
-                        | tag!("COMMAND_WITH_FLAG")
+                        | tag!("COMMAND_WITH_FLAG(")
                     )
                 ) ~
                 signature: dbg_dmp!(quoted_string) ~
                 helpstring: dbg_dmp!(quoted_string) ~
+                blanks ~
                 module_name: dbg_dmp!(module) ~
                 permissions: dbg_dmp!(permissions) ~
                 availability: dbg_dmp!(availability) ~
-                flags: alt!(
-                    dbg!(preceded!(tag!(","), flags))
-                    | dbg!(tag!(")")) => {|_| vec![]}
-                )~
-                alt_complete!(
-                    dbg!(tag!(")"))
-                    | dbg!(blanks)
-                )?,
-                //dbg!(blanks)? ,
+                flags: opt!(flags)~
+                tag!(")")~
+                blanks,
             ||{
                 Command{
                     signature: Signature::parse(signature),
