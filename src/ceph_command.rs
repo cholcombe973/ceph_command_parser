@@ -541,12 +541,12 @@ impl CephEnum {
                 validate
             },
             &CephEnum::CephIPAddr => {
-                let mut validate = String::new();
+                let validate = String::new();
 
                 validate
             },
             &CephEnum::CephEntityAddr => {
-                let mut validate = String::new();
+                let validate = String::new();
 
                 validate
             },
@@ -609,7 +609,7 @@ impl CephEnum {
                 validate
             },
             &CephEnum::CephFragment => {
-                let mut validate = String::new();
+                let validate = String::new();
 
                 validate
             },
@@ -625,7 +625,7 @@ impl CephEnum {
                 validate
             },
             &CephEnum::CephPrefix => {
-                let mut validate = String::new();
+                let validate = String::new();
 
                 validate
             },
@@ -1277,12 +1277,12 @@ impl Command {
                 permissions: dbg_dmp!(permissions) ~
                 availability: dbg_dmp!(availability) ~
                 flags: alt!(
-                    preceded!(tag!(","), flags)
-                    | tag!(")") => {|_| vec![]}
+                    dbg!(preceded!(tag!(","), flags))
+                    | dbg!(tag!(")")) => {|_| vec![]}
                 )~
                 alt_complete!(
-                    tag!(")")
-                    | blanks
+                    dbg!(tag!(")"))
+                    | dbg!(blanks)
                 )?,
                 //dbg!(blanks)? ,
             ||{
