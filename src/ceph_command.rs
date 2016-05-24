@@ -7,24 +7,87 @@ use std::str::{from_utf8, FromStr};
 
 #[test]
 fn one_command() {
+    let x: &[u8] = &[];
     let input = r#"COMMAND("pg dump_pools_json", "show pg pools info in json only",\
 	"pg", "r", "cli,rest")"#;
     let result = Command::parse(&input.as_bytes());
-    println!("Result: {:?}", result);
+    //println!("Result: {:?}", result);
+
+    assert_eq!(
+        nom::IResult::Done(x,
+            Command {
+                signature: Signature {
+                    prefix: "pg dump_pools_json".to_string(),
+                    parameters: HashMap::new(),
+            },
+            helpstring: "show pg pools info in json only".to_string(),
+            module_name: Module::Pg,
+            permissions: Permissions { read: true, write: false, execute: false },
+            availability: Availability::Both,
+            flags: vec![] }
+        ), result);
 }
 
 #[test]
 fn piped_command() {
+    let x: &[u8] = &[];
     let input = r#"COMMAND("pg ls-by-osd " \
         "name=osd,type=CephOsdName " \
         "name=pool,type=CephInt,req=false " \
     	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized|activating|peered,n=N,req=false ", \
     	"list pg on osd [osd]", "pg", "r", "cli,rest")"#;
     let result = Command::parse(&input.as_bytes());
-    println!("Result: {:?}", result);
+    //println!("piped_command Result: {:?}", result);
+
+    //Expected params that will be parsed
+    let mut params = HashMap::new();
+    params.insert("osd".to_string(),CephType { req: true, variant: CephEnum::CephOsdName });
+    params.insert("states".to_string(), CephType { req: false, variant: CephEnum::CephChoices {
+        choices: vec![
+            "active".to_string(), "clean".to_string(), "down".to_string(), "replay".to_string(), "splitting".to_string(), "scrubbing".to_string(), "scrubq".to_string(), "degraded".to_string(), "inconsistent".to_string(), "peering".to_string(), "repair".to_string(), "recovering".to_string(), "backfill_wait".to_string(), "incomplete".to_string(), "stale".to_string(), "remapped".to_string(), "deep_scrub".to_string(), "backfill".to_string(), "backfill_toofull".to_string(), "recovery_wait".to_string(), "undersized".to_string(), "activating".to_string(), "peered".to_string()]
+            , allowed_repeats: AllowedRepeats::Many } });
+    params.insert("pool".to_string(), CephType { req: false, variant: CephEnum::CephInt { min: None, max: None }});
+
+    assert_eq!(
+        nom::IResult::Done(x,
+            Command {
+                signature: Signature {
+                    prefix: "pg ls-by-osd".to_string(),
+                    parameters: params
+            },
+            helpstring: "list pg on osd [osd]".to_string(),
+            module_name: Module::Pg,
+            permissions: Permissions { read: true, write: false, execute: false },
+            availability: Availability::Both, flags: vec![] }
+        ), result);
 }
 
-#[derive(Debug)]
+#[derive(Debug,Eq,PartialEq)]
+pub enum Flag {
+    ///No Flag assigned
+    NoFlag,
+    ///Command may not be forwarded
+    NoForward,
+    ///command is considered obsolete
+    Obsolete,
+    ///command is considered deprecated
+    Deprecated,
+}
+
+impl Flag {
+    fn from_str(m: &str) -> Flag {
+        trace!("Input to Flag: {:?}", m);
+        match m {
+            "NONE" => Flag::NoFlag,
+            "NOFORWARD" => Flag::NoForward,
+            "OBSOLETE" => Flag::Obsolete,
+            "DEPRECATED" => Flag::Deprecated,
+            _ => Flag::NoFlag,
+        }
+    }
+}
+
+#[derive(Debug, Eq,PartialEq)]
 pub enum Availability {
     Cli,
     Rest,
@@ -84,7 +147,7 @@ impl Module {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq,PartialEq)]
 pub struct Permissions {
     pub read: bool,
     pub write: bool,
@@ -101,7 +164,7 @@ impl Permissions {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Signature {
     pub prefix: String,
     pub parameters: HashMap<String, CephType>,
@@ -153,7 +216,7 @@ impl Signature {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq,PartialEq)]
 pub enum AllowedRepeats{
     One, //Argument is allowed only once
     Many, //Argument is allowed 1 or more times
@@ -168,7 +231,7 @@ impl AllowedRepeats{
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CephType{
     pub req: bool,
     pub variant: CephEnum,
@@ -409,7 +472,7 @@ impl CephType{
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CephEnum {
     CephInt {
         min: Option<u32>,
@@ -753,8 +816,14 @@ fn test_float(){
     let x: &[u8] = &[];
     let input = "type=CephFloat,name=weight,range=0.0|1.0";
     let result = parse_param_map(input.as_bytes());
-    println!("Result: {:?}", result);
-    //assert_eq!(nom::IResult::Done(x, Some("A-Za-z0-9-_.".to_string())), result);
+    //println!("Result: {:?}", result);
+    assert_eq!(
+        nom::IResult::Done(x,
+            (
+                "weight".to_string(),
+                CephType { req: true, variant: CephEnum::CephFloat { min: Some(0.0), max: Some(1.0) } }
+            )
+    ), result);
 }
 
 fn is_float(chr: u8) -> bool {
@@ -937,6 +1006,7 @@ named!(allowed_repeats <&[u8], AllowedRepeats>,
 
 fn parse_param_map(input: &[u8]) -> nom::IResult<&[u8], (String, CephType)> {
     //A few of the Command's have a reversed type="",name="" which is unfortunate
+    trace!("parse_param_map input: {:?}", String::from_utf8_lossy(input));
     let name_first = tag!(input, "name=");
     match name_first{
         nom::IResult::Done(_,_) => {
@@ -984,19 +1054,28 @@ fn parse_param_map(input: &[u8]) -> nom::IResult<&[u8], (String, CephType)> {
 
 #[test]
 fn check_parse_param_map() {
+    let x: &[u8] = &[];
     let input = "name=epoch,type=CephInt,range=0,req=false";
     let result = parse_param_map(input.as_bytes());
-    println!("Result: {:?}", result);
+    //println!("Result: {:?}", result);
+
+    assert_eq!(
+        nom::IResult::Done(x,
+            (
+                "epoch".to_string(),
+                CephType { req: false, variant: CephEnum::CephInt { min: Some(0), max: None } }
+            )
+    ), result);
 }
 
 named!(quoted_avail_string <&[u8], &str>,
     map_res!(
         chain!(
             space? ~
-            take_until!("\"") ~
-            tag!("\"") ~
-            s: take_until!("\")") ~
-            tag!("\""),
+            dbg!(take_until_and_consume!("\"")) ~
+            //dbg!(tag!("\"")) ~
+            s: dbg!(take_until!("\"")) ~
+            dbg!(tag!("\"")),
             ||{
                 s
             }
@@ -1015,10 +1094,64 @@ named!(module <&[u8], Module>,
     )
 );
 
+#[test]
+fn check_parse_flags() {
+    let x: &[u8] = &[];
+    let input = "FLAG(NOFORWARD)|FLAG(DEPRECATED)";
+    let result = flags(input.as_bytes());
+    println!("Result: {:?}", result);
+    assert_eq!(nom::IResult::Done(x, vec![Flag::NoForward, Flag::Deprecated]), result);
+}
+
+named!(flags<&[u8], Vec<Flag> >,
+    chain!(
+        flags: separated_list!(tag!("|"), flag),
+        ||{
+            flags
+        }
+    )
+);
+
+#[test]
+fn test_command_with_flag(){
+    let x: &[u8] = &[];
+    let input = r#"COMMAND_WITH_FLAG("scrub", "scrub the monitor stores (DEPRECATED)", \
+             "mon", "rw", "cli,rest", \
+             FLAG(DEPRECATED))"#;
+    let result = Command::parse(input.as_bytes());
+    //println!("Result: {:?}", result);
+    assert_eq!(
+        nom::IResult::Done(x,
+            Command {
+                signature: Signature {
+                    prefix: "scrub".to_string(),
+                    parameters: HashMap::new(),
+                },
+                helpstring: "scrub the monitor stores (DEPRECATED)".to_string(),
+                module_name: Module::Mon,
+                permissions: Permissions { read: true, write: true, execute: false },
+                availability: Availability::Both,
+                flags: vec![Flag::Deprecated]
+        }), result);
+}
+
+named!(flag <&[u8], Flag>,
+    map!(
+        chain!(
+            take_until!("FLAG(") ~
+            tag!("FLAG(")~
+            flag: dbg_dmp!(map_res!(take_until_and_consume!(")"), from_utf8)),
+            ||{
+                flag
+            }
+        ), Flag::from_str
+    )
+);
+
 named!(availability <&[u8], Availability>,
     map!(
         chain!(
-            availabity_string: quoted_avail_string,
+            availabity_string: dbg_dmp!(quoted_avail_string),
             ||{
                 availabity_string
             }
@@ -1116,29 +1249,42 @@ fn wrap_string(s: &String)->String{
 }
 
 // COMMAND(signature, helpstring, modulename, req perms, availability)
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub struct Command {
     pub signature: Signature,
     pub helpstring: String,
     pub module_name: Module,
     pub permissions: Permissions,
     pub availability: Availability,
+    pub flags: Vec<Flag>,
 }
 
 impl Command {
     fn parse(input: & [u8]) -> nom::IResult<&[u8], Self> {
-        //println!("Input to Command: {:?}", input);
+        trace!("Input to Command: {}", String::from_utf8_lossy(input));
         chain!(
             input,
                 dbg!(many0!(blanks)) ~
-                dbg!(tag!("COMMAND(")) ~
+                dbg!(
+                    alt!(
+                        tag!("COMMAND(")
+                        | tag!("COMMAND_WITH_FLAG")
+                    )
+                ) ~
                 signature: dbg_dmp!(quoted_string) ~
                 helpstring: dbg_dmp!(quoted_string) ~
                 module_name: dbg_dmp!(module) ~
                 permissions: dbg_dmp!(permissions) ~
                 availability: dbg_dmp!(availability) ~
-                dbg!(tag!(")")) ~
-                dbg!(blanks)? ,
+                flags: alt!(
+                    preceded!(tag!(","), flags)
+                    | tag!(")") => {|_| vec![]}
+                )~
+                alt_complete!(
+                    tag!(")")
+                    | blanks
+                )?,
+                //dbg!(blanks)? ,
             ||{
                 Command{
                     signature: Signature::parse(signature),
@@ -1146,6 +1292,7 @@ impl Command {
                     module_name: module_name,
                     permissions: permissions,
                     availability: availability,
+                    flags: flags,
                 }
             }
         )
@@ -1164,14 +1311,15 @@ impl Command {
         output.push_str("        \"\"\"\n");
         output.push_str("        ");
         output.push_str(&wrap_string(&self.helpstring));
-        output.push_str("\n");
-        for (key, ceph_type) in self.signature.parameters.iter(){
-            output.push_str(&format!("        :param {} {}\n", key, ceph_type.variant.to_string()));
-        }
+        output.push_str("\n\n");
+        let params: Vec<String> = self.signature.parameters.iter()
+                            .map(|(key, ceph_type)| format!("        :param {}: {}", key, ceph_type.variant.to_string()))
+                            .collect();
+        output.push_str(&params.join("\n"));
         output.push_str("\n        :return: (string outbuf, string outs)");
         output.push_str("\n        :raise CephError: Raises CephError on command execution errors");
         output.push_str("\n        :raise rados.Error: Raises on rados errors");
-        output.push_str("\n        \"\"\"\n");
+        output.push_str("\n        \"\"\"\n\n");
         //Help strings
 
         //Validate the parameters
