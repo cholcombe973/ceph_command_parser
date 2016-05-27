@@ -713,7 +713,7 @@ impl CephEnum {
 
                 out.push_str(" allowed repeats=");
                 out.push_str(&allowed_repeats.clone().to_string());
-                
+
                 out
             },
             &CephEnum::CephFilepath => "file path".to_string(),
@@ -1202,7 +1202,7 @@ named!(flags<&[u8], Vec<Flag> >,
     chain!(
         tag!(",") ~
         blanks ~
-        flags: separated_list!(tag!("|"), flag),
+        flags: separated_list!(tag!("|"), call!(flag)),
         ||{
             flags
         }
@@ -1232,17 +1232,53 @@ fn test_command_with_flag(){
         }), result);
 }
 
-named!(flag <&[u8], Flag>,
-    map!(
-        chain!(
-            take_until_and_consume!("FLAG(") ~
-            flag: dbg_dmp!(map_res!(take_until_and_consume!(")"), from_utf8)),
-            ||{
-                flag
-            }
-        ), Flag::from_str
-    )
-);
+#[test]
+fn test_command_with_flag_hammer(){
+    let x: &[u8] = &[];
+    let input = r#"COMMAND_WITH_FLAG("compact", "cause compaction of monitor's leveldb storage", \
+             "mon", "rw", "cli,rest", NOFORWARD)"#;
+    let result = Command::parse(input.as_bytes());
+    println!("Result: {:?}", result);
+    assert_eq!(
+        nom::IResult::Done(x,
+            Command {
+                signature: Signature {
+                    prefix: "compact".to_string(),
+                    parameters: HashMap::new() },
+                helpstring: "cause compaction of monitor\'s leveldb storage".to_string(),
+                module_name: Module::Mon,
+                permissions: Permissions { read: true, write: true, execute: false },
+                availability: Availability::Both,
+                flags: Some(vec![Flag::NoForward])
+        }), result);
+}
+
+fn flag(input: &[u8]) -> nom::IResult<&[u8], Flag>{
+    let noforward = tag!(input, "NOFORWARD");
+    match noforward{
+        nom::IResult::Done(rest, _) => {
+            nom::IResult::Done(rest, Flag::NoForward)
+        }
+        nom::IResult::Incomplete(_) => {
+            chain!(input,
+                dbg!(take_until_and_consume!("FLAG(")) ~
+                flag: dbg_dmp!(map_res!(take_until_and_consume!(")"), from_utf8)),
+                ||{
+                    Flag::from_str(flag)
+                }
+            )
+        }
+        nom::IResult::Error(_) => {
+            chain!(input,
+                dbg!(take_until_and_consume!("FLAG(")) ~
+                flag: dbg_dmp!(map_res!(take_until_and_consume!(")"), from_utf8)),
+                ||{
+                    Flag::from_str(flag)
+                }
+            )
+        }
+    }
+}
 
 named!(availability <&[u8], Availability>,
     map!(
@@ -1408,7 +1444,7 @@ impl Command {
                 permissions: dbg_dmp!(permissions) ~
                 availability: dbg_dmp!(availability) ~
                 flags: opt!(flags)~
-                tag!(")")~
+                dbg_dmp!(tag!(")"))~
                 blanks,
             ||{
                 Command{
