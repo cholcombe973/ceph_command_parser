@@ -62,7 +62,7 @@ fn piped_command() {
         ), result);
 }
 
-#[derive(Debug,Eq,PartialEq)]
+#[derive(Clone, Debug,Eq,PartialEq)]
 pub enum Flag {
     ///No Flag assigned
     NoFlag,
@@ -87,7 +87,7 @@ impl Flag {
     }
 }
 
-#[derive(Debug, Eq,PartialEq)]
+#[derive(Clone, Debug, Eq,PartialEq)]
 pub enum Availability {
     Cli,
     Rest,
@@ -107,7 +107,7 @@ impl Availability {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Module {
     Mds,
     Osd,
@@ -147,7 +147,7 @@ impl Module {
     }
 }
 
-#[derive(Debug, Eq,PartialEq)]
+#[derive(Clone, Debug, Eq,PartialEq)]
 pub struct Permissions {
     pub read: bool,
     pub write: bool,
@@ -164,9 +164,10 @@ impl Permissions {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Signature {
     pub prefix: String,
+    pub duplicate: bool,
     pub parameters: HashMap<String, CephType>,
 }
 
@@ -210,6 +211,7 @@ impl Signature {
 
         Signature {
             prefix: prefix.join(" "),
+            duplicate: false,
             parameters: parameters,
         }
     }
@@ -525,33 +527,57 @@ pub enum CephEnum {
 }
 
 impl CephEnum {
-    fn validate_string(&self, param_name: &String) -> String{
+    fn validate_string(&self, param_name: &String, indent: String, calling_function: &String,) -> String{
         match self{
             &CephEnum::CephInt{min, max}  => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, int)", param_name));
-                validate.push_str(&format!(", str({}) + \" is not a int\"", param_name));
+                validate.push_str(&format!("{}if not isinstance({}, six.integer_types):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a int\")", indent, param_name));
+
+                if min.is_some(){
+                    validate.push_str(&format!("\n{}if {} < {}:", indent, param_name, min.unwrap()));
+                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg=str({})+\" is less than min of {}\")", indent, calling_function, param_name, min.unwrap()));
+                }
+                if max.is_some(){
+                    validate.push_str(&format!("\n{}if {} > {}:", indent, param_name, max.unwrap()));
+                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg=str({})+\" is less than min of {}\")", indent, calling_function, param_name, max.unwrap()));
+                }
 
                 validate
             },
             &CephEnum::CephFloat{min, max} => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, float)", param_name));
-                validate.push_str(&format!(", str({}) + \" is not a float\"", param_name));
+                validate.push_str(&format!("{}if not isinstance({}, float):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a float\")", indent, param_name));
+
+                if min.is_some(){
+                    validate.push_str(&format!("\n{}if {} < {}:", indent, param_name, min.unwrap()));
+                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg=str({})+\" is less than min of {}\")", indent, calling_function, param_name, min.unwrap()));
+                }
+                if max.is_some(){
+                    validate.push_str(&format!("\n{}if {} > {}:", indent, param_name, max.unwrap()));
+                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg=str({})+\" is less than min of {}\")", indent, calling_function, param_name, max.unwrap()));
+                }
 
                 validate
             },
             &CephEnum::CephString{ref goodchars, ref allowed_repeats} => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
-                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
+                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
+
+                if goodchars.is_some(){
+                    let good = goodchars.clone().unwrap();
+                    validate.push_str(&format!("\n{}if not re.match(\"{}\", {}):", indent, good, param_name));
+                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg={}+\" not in {}\")", indent, calling_function, param_name, good));
+                }
 
                 validate
             },
             &CephEnum::CephSocketpath => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert stat.S_ISSOCK(os.stat({}).st_mode)", param_name));
-                validate.push_str(&format!(", str({}) + \" is not a socket\"", param_name));
+                validate.push_str(&format!("\n{}if not stat.S_ISSOCK(os.stat({}).st_mode):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a socket\")", indent, param_name));
 
                 validate
             },
@@ -567,42 +593,42 @@ impl CephEnum {
             },
             &CephEnum::CephPoolname{ref allowed_repeats} => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
-                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
+                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
 
                 validate
             },
             &CephEnum::CephObjectname => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
-                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
+                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
 
                 validate
             },
             &CephEnum::CephPgid => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
-                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
+                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
 
                 validate
             },
             &CephEnum::CephName => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
-                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
+                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
 
                 validate
             },
             &CephEnum::CephOsdName => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert isinstance({}, six.string_types)", param_name));
-                validate.push_str(&format!(", str({}) + \" is not a String\"", param_name));
+                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
 
                 validate
             },
             &CephEnum::CephChoices{ref choices, ref allowed_repeats} => {
                 let mut validate = String::new();
-                validate.push_str("ceph.validator(value=");
+                validate.push_str(&format!("{}validator(value=", indent));
                 validate.push_str(param_name);
                 validate.push_str(",");
                 validate.push_str(" valid_type=list,");
@@ -618,7 +644,7 @@ impl CephEnum {
             },
             &CephEnum::CephFilepath => {
                 let mut validate = String::new();
-                validate.push_str(&format!("assert os.path.exists({}), ", param_name));
+                validate.push_str(&format!("{}assert os.path.exists({}), ", indent, param_name));
                 validate.push_str(&format!(", str({}) + \" does not exist on the filesystem\"", param_name));
 
                 validate
@@ -630,12 +656,8 @@ impl CephEnum {
             },
             &CephEnum::CephUUID => {
                 let mut validate = String::new();
-                validate.push_str("assert isinstance(");
-                validate.push_str(param_name);
-                validate.push_str(",");
-                validate.push_str(" uuid.UUID");
-                validate.push_str(")");
-                validate.push_str(&format!(", str({}) + \" is not a UUID\"", param_name));
+                validate.push_str(&format!("{}if not isinstance({}, pyuuid.UUID):", indent, param_name));
+                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a uuid\")", indent, param_name));
 
                 validate
             },
@@ -1415,7 +1437,7 @@ COMMAND("pg send_pg_creates", "trigger pg creates to be issued",\
 }
 
 // COMMAND(signature, helpstring, modulename, req perms, availability)
-#[derive(Debug,PartialEq)]
+#[derive(Clone, Debug,PartialEq)]
 pub struct Command {
     pub signature: Signature,
     pub helpstring: String,
@@ -1461,7 +1483,17 @@ impl Command {
 
     pub fn to_string(&self) -> String {
         let mut output = String::new();
-        let prefix_method_name = self.signature.prefix.replace(" ", "_").replace("-", "_");
+        let prefix_method_name: String;
+
+        //Add a suffix if this function is a duplicate of another function
+        match self.signature.duplicate{
+            true => {
+                prefix_method_name = format!("{}_2", self.signature.prefix.replace(" ", "_").replace("-", "_"));
+            },
+            false => {
+                prefix_method_name = self.signature.prefix.replace(" ", "_").replace("-", "_");
+            },
+        };
         let num_of_params = self.signature.parameters.len();
 
         output.push_str(&format!("    def {}(self", prefix_method_name));
@@ -1486,8 +1518,8 @@ impl Command {
         //Validate the parameters
         for (key, ceph_type) in self.signature.parameters.iter(){
             if ceph_type.req{
-                let validate_string = ceph_type.variant.validate_string(&key);
-                output.push_str(&format!("        {}\n", validate_string));
+                let validate_string = ceph_type.variant.validate_string(&key, String::from("        "), &prefix_method_name);
+                output.push_str(&format!("{}\n", validate_string));
             }
         }
 
@@ -1511,10 +1543,10 @@ impl Command {
         //Optional parameters with checks to see if they are used
         for (key, ceph_type) in self.signature.parameters.iter(){
             if !ceph_type.req{
-                let validate_string = ceph_type.variant.validate_string(&key);
+                let validate_string = ceph_type.variant.validate_string(&key, String::from("            "), &prefix_method_name);
                 output.push_str("\n");
                 output.push_str(&format!("\n        if {} is not None:", key));
-                output.push_str(&format!("\n            {}", validate_string));
+                output.push_str(&format!("\n{}", validate_string));
                 output.push_str(&format!("\n            cmd['{}']={}", key, key));
             }
         }
