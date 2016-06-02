@@ -51,15 +51,11 @@ fn print_init() {
 }
 
 fn print_imports() {
-    println!("from ceph_api.validator import validator");
+    println!("import ceph_argparse");
     println!("import json");
     println!("import os");
-    println!("import os.path");
     println!("import rados");
-    println!("import re");
     println!("import six");
-    println!("import stat");
-    println!("import uuid as pyuuid");
     println!("");
 }
 

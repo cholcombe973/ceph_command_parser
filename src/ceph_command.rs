@@ -527,67 +527,69 @@ pub enum CephEnum {
 }
 
 impl CephEnum {
-    fn validate_string(&self, param_name: &String, indent: String, calling_function: &String,) -> String{
+    fn validate_string(&self, param_name: &String, indent: String) -> String{
         match self{
             &CephEnum::CephInt{min, max}  => {
-                let mut validate = String::new();
-                validate.push_str(&format!("{}if not isinstance({}, six.integer_types):", indent, param_name));
-                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a int\")", indent, param_name));
-
+                let mut range = String::from("'");
                 if min.is_some(){
-                    validate.push_str(&format!("\n{}if {} < {}:", indent, param_name, min.unwrap()));
-                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg=str({})+\" is less than min of {}\")", indent, calling_function, param_name, min.unwrap()));
+                    range.push_str(&format!("{}", min.unwrap()));
                 }
                 if max.is_some(){
-                    validate.push_str(&format!("\n{}if {} > {}:", indent, param_name, max.unwrap()));
-                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg=str({})+\" is less than min of {}\")", indent, calling_function, param_name, max.unwrap()));
+                    range.push_str(&format!("|{}", max.unwrap()));
                 }
+                range.push_str("'");
+
+                let mut validate = String::new();
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephInt(range={})", indent, param_name, range));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephFloat{min, max} => {
-                let mut validate = String::new();
-                validate.push_str(&format!("{}if not isinstance({}, float):", indent, param_name));
-                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a float\")", indent, param_name));
-
+                let mut range = String::from("'");
                 if min.is_some(){
-                    validate.push_str(&format!("\n{}if {} < {}:", indent, param_name, min.unwrap()));
-                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg=str({})+\" is less than min of {}\")", indent, calling_function, param_name, min.unwrap()));
+                    range.push_str(&format!("{}", min.unwrap()));
                 }
                 if max.is_some(){
-                    validate.push_str(&format!("\n{}if {} > {}:", indent, param_name, max.unwrap()));
-                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg=str({})+\" is less than min of {}\")", indent, calling_function, param_name, max.unwrap()));
+                    range.push_str(&format!("|{}", max.unwrap()));
                 }
+                range.push_str("'");
+
+                let mut validate = String::new();
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephFloat(range={})", indent, param_name, range));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephString{ref goodchars, ref allowed_repeats} => {
-                let mut validate = String::new();
-                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
-                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
+                let good = goodchars.clone().unwrap_or("".to_string());
 
-                if goodchars.is_some(){
-                    let good = goodchars.clone().unwrap();
-                    validate.push_str(&format!("\n{}if not re.match(\"{}\", {}):", indent, good, param_name));
-                    validate.push_str(&format!("\n{}    raise CephError(cmd=\"{}\", msg={}+\" not in {}\")", indent, calling_function, param_name, good));
-                }
+                let mut validate = String::new();
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephString(goodchars=\"{}\")", indent, param_name, good));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephSocketpath => {
                 let mut validate = String::new();
-                validate.push_str(&format!("\n{}if not stat.S_ISSOCK(os.stat({}).st_mode):", indent, param_name));
-                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a socket\")", indent, param_name));
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephSocketpath()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephIPAddr => {
-                let validate = String::new();
+                let mut validate = String::new();
+
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephIPAddr()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephEntityAddr => {
-                let validate = String::new();
+                let mut validate = String::new();
+
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephEntityAddr()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
@@ -607,62 +609,65 @@ impl CephEnum {
             },
             &CephEnum::CephPgid => {
                 let mut validate = String::new();
-                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
-                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephPgid()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephName => {
                 let mut validate = String::new();
-                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
-                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephName()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephOsdName => {
                 let mut validate = String::new();
-                validate.push_str(&format!("{}if not isinstance({}, six.string_types):", indent, param_name));
-                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a String\")", indent, param_name));
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephOsdName()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephChoices{ref choices, ref allowed_repeats} => {
                 let mut validate = String::new();
-                validate.push_str(&format!("{}validator(value=", indent));
-                validate.push_str(param_name);
-                validate.push_str(",");
-                validate.push_str(" valid_type=list,");
-                validate.push_str(" valid_range=[");
-                //choices
-                let quoted_choices:Vec<String> = choices.iter().map(|s| format!("\"{}\"", s)).collect();
-                validate.push_str(&quoted_choices.join(","));
-                validate.push_str("]");
-                validate.push_str(")");
-                validate.push_str(&format!(", str({}) + \" is not a list\"", param_name));
+
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephChoices(strings=\"{}\")",
+                    indent,
+                    param_name,
+                    choices.join("|")
+                ));
+                validate.push_str(&format!("\n{}for s in {}:", indent, param_name));
+                validate.push_str(&format!("\n{}    {}_validator.valid(s)", indent, param_name));
 
                 validate
             },
             &CephEnum::CephFilepath => {
                 let mut validate = String::new();
-                validate.push_str(&format!("{}assert os.path.exists({}), ", indent, param_name));
-                validate.push_str(&format!(", str({}) + \" does not exist on the filesystem\"", param_name));
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephFilepath()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephFragment => {
-                let validate = String::new();
+                let mut validate = String::new();
+
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephFragment()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephUUID => {
                 let mut validate = String::new();
-                validate.push_str(&format!("{}if not isinstance({}, pyuuid.UUID):", indent, param_name));
-                validate.push_str(&format!("\n{}    raise TypeError(\"{} is not a uuid\")", indent, param_name));
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephUUID()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
             &CephEnum::CephPrefix => {
-                let validate = String::new();
+                let mut validate = String::new();
+
+                validate.push_str(&format!("{}{}_validator = ceph_argparse.CephPrefix()", indent, param_name));
+                validate.push_str(&format!("\n{}{}_validator.valid({})", indent, param_name, param_name));
 
                 validate
             },
@@ -1518,7 +1523,7 @@ impl Command {
         //Validate the parameters
         for (key, ceph_type) in self.signature.parameters.iter(){
             if ceph_type.req{
-                let validate_string = ceph_type.variant.validate_string(&key, String::from("        "), &prefix_method_name);
+                let validate_string = ceph_type.variant.validate_string(&key, String::from("        "));
                 output.push_str(&format!("{}\n", validate_string));
             }
         }
@@ -1543,7 +1548,7 @@ impl Command {
         //Optional parameters with checks to see if they are used
         for (key, ceph_type) in self.signature.parameters.iter(){
             if !ceph_type.req{
-                let validate_string = ceph_type.variant.validate_string(&key, String::from("            "), &prefix_method_name);
+                let validate_string = ceph_type.variant.validate_string(&key, String::from("            "));
                 output.push_str("\n");
                 output.push_str(&format!("\n        if {} is not None:", key));
                 output.push_str(&format!("\n{}", validate_string));
