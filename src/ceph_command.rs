@@ -19,6 +19,7 @@ fn one_command() {
                 signature: Signature {
                     prefix: "pg dump_pools_json".to_string(),
                     parameters: HashMap::new(),
+                    duplicate: false,
             },
             helpstring: "show pg pools info in json only".to_string(),
             module_name: Module::Pg,
@@ -53,7 +54,8 @@ fn piped_command() {
             Command {
                 signature: Signature {
                     prefix: "pg ls-by-osd".to_string(),
-                    parameters: params
+                    parameters: params,
+                    duplicate: false,
             },
             helpstring: "list pg on osd [osd]".to_string(),
             module_name: Module::Pg,
@@ -1250,6 +1252,7 @@ fn test_command_with_flag(){
                 signature: Signature {
                     prefix: "scrub".to_string(),
                     parameters: HashMap::new(),
+                    duplicate: false,
                 },
                 helpstring: "scrub the monitor stores (DEPRECATED)".to_string(),
                 module_name: Module::Mon,
@@ -1271,7 +1274,9 @@ fn test_command_with_flag_hammer(){
             Command {
                 signature: Signature {
                     prefix: "compact".to_string(),
-                    parameters: HashMap::new() },
+                    parameters: HashMap::new(),
+                    duplicate: false,
+                },
                 helpstring: "cause compaction of monitor\'s leveldb storage".to_string(),
                 module_name: Module::Mon,
                 permissions: Permissions { read: true, write: true, execute: false },
